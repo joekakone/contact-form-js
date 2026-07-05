@@ -15,6 +15,7 @@
  *     whatsapp: {
  *       number: "22891518923",
  *     },
+ *     language: "fr",
  *   });
  *
  *   // Then in your HTML:
@@ -26,6 +27,11 @@
  * missing from the form, or left empty by the user (e.g. email,
  * lastName), is simply omitted from the generated message instead
  * of showing up blank.
+ *
+ * The `language` option controls the labels used inside the
+ * generated message ("Name:", "Phone:", "Subject:"...). Supported
+ * values: "fr", "en". Defaults to the page's <html lang="..."> if
+ * present, otherwise "en". Unknown languages fall back to "en".
  * ----------------------------------------------------------------
  */
 
@@ -38,6 +44,30 @@ const DEFAULT_FIELDS = {
   message: "InputMessage",
 };
 
+/**
+ * Labels used to build the message body, per language.
+ * Add a new language by adding a key here (e.g. "es") — everything
+ * else in the class already reads from this table.
+ */
+const TRANSLATIONS = {
+  en: {
+    name: "Name",
+    phone: "Phone",
+    email: "Email",
+    subject: "Subject",
+    newMessageFrom: (host) => `New message from ${host}`,
+  },
+  fr: {
+    name: "Nom",
+    phone: "Téléphone",
+    email: "Email",
+    subject: "Sujet",
+    newMessageFrom: (host) => `Nouveau message depuis ${host}`,
+  },
+};
+
+const DEFAULT_LANGUAGE = "en";
+
 class ContactFormSender {
   /**
    * @param {Object} config
@@ -45,6 +75,7 @@ class ContactFormSender {
    * @param {Object} [config.fields] - mapping { key: fieldId }
    * @param {Object} [config.email] - { to: string, cc?: string, subjectPrefix?: string }
    * @param {Object} [config.whatsapp] - { number: string } (international format, no "+")
+   * @param {string} [config.language] - "fr" | "en". Defaults to <html lang> or "en".
    */
   constructor(config) {
     if (!config.formId) {
@@ -60,11 +91,34 @@ class ContactFormSender {
     this.fields = { ...DEFAULT_FIELDS, ...(config.fields || {}) };
     this.email = config.email || null;
     this.whatsapp = config.whatsapp || null;
+    this.language = this._resolveLanguage(config.language);
 
     // Bind methods so they can be passed directly as callbacks
     // (e.g. addEventListener, onclick="...").
     this.sendByMail = this.sendByMail.bind(this);
     this.sendByWhatsapp = this.sendByWhatsapp.bind(this);
+  }
+
+  /**
+   * Picks the translation table to use: the explicit `language` config,
+   * then the page's <html lang="...">, then "en". An unsupported
+   * language (e.g. "de") silently falls back to "en" rather than
+   * throwing, so a typo never breaks form submission.
+   */
+  _resolveLanguage(requestedLanguage) {
+    const candidate =
+      requestedLanguage ||
+      (typeof document !== "undefined" &&
+        document.documentElement.lang &&
+        document.documentElement.lang.slice(0, 2)) ||
+      DEFAULT_LANGUAGE;
+
+    return TRANSLATIONS[candidate] ? candidate : DEFAULT_LANGUAGE;
+  }
+
+  /** Shortcut to the active translation table. */
+  get _t() {
+    return TRANSLATIONS[this.language];
   }
 
   /** Gets the form element, or throws a clear error if it's missing. */
@@ -110,23 +164,26 @@ class ContactFormSender {
    * Builds the list of "label: value" lines (name, phone, email...),
    * skipping any field that is not configured or was left empty.
    * `email` in particular is optional: not every form requires it.
+   * Labels come from the active translation table.
    */
   _buildDetailLines(data, { bold = false } = {}) {
-    const label = (text) => (bold ? `*${text}*` : text);
+    const t = this._t;
+    const label = (text) => (bold ? `*${text}:*` : `${text}:`);
     const lines = [];
 
     const fullName = this._formatName(data);
-    if (fullName) lines.push(`${label("Name:")} ${fullName}`);
-    if (data.phone) lines.push(`${label("Phone:")} ${data.phone}`);
-    if (data.email) lines.push(`${label("Email:")} ${data.email}`);
+    if (fullName) lines.push(`${label(t.name)} ${fullName}`);
+    if (data.phone) lines.push(`${label(t.phone)} ${data.phone}`);
+    if (data.email) lines.push(`${label(t.email)} ${data.email}`);
 
     return lines;
   }
 
   /** Builds the message body shared by both channels. */
   _buildMessageBody(data, { withHeader = false } = {}) {
+    const t = this._t;
     const header = withHeader
-      ? `*New message from ${window.location.hostname}*\n\n*Subject:* ${data.subject}\n\n`
+      ? `*${t.newMessageFrom(window.location.hostname)}*\n\n*${t.subject}:* ${data.subject}\n\n`
       : "";
     const detailLines = this._buildDetailLines(data, { bold: withHeader });
     const footer = detailLines.length
