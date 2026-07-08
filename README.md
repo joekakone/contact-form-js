@@ -5,11 +5,11 @@ Contact Form in static website using JavaScript
 const contact = ContactForm.create({
   formId: "contactForm",
   email: {
-    to: "contact@josephkonkathedataguy.com",
-    cc: "konka.datanalytics@gmail.com",
+    to: "contact@example.com",
+    cc: "sam.smith@example.com",
   },
   whatsapp: {
-    number: "22891518923",
+    number: "15555550199",
   },
 });
 ```
